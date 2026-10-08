@@ -1,5 +1,6 @@
 import React from "react";
 import { getStatusLabel, getRiskLabel, getRiskBadgeClass, needsAttention } from "@/lib/yangjuData";
+import AdminDashboard from "@/components/yangju/AdminDashboard";
 
 const W = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 const FILTERS = [
@@ -30,10 +31,15 @@ export default function AdminList({ c }) {
         <span className="text-xs bg-slate-900 text-white font-semibold px-3 py-1 rounded-full">총 {list.length}건</span>
       </div>
 
-      <div className="flex space-x-2 bg-slate-100 p-1.5 rounded-2xl text-xs font-semibold">
-        {FILTERS.map(([key, label, on, off]) => (
-          <button key={key} onClick={() => c.setAdminFilter(key)} className={`flex-1 py-2 rounded-xl transition ${c.adminFilter === key ? on : off}`}>{label}</button>
-        ))}
+      <AdminDashboard reports={c.reports} />
+
+      <div className="flex items-center justify-between pt-2">
+        <h3 className="font-bold text-slate-900 text-base">민원 목록</h3>
+        <div className="flex space-x-2 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+          {FILTERS.map(([key, label, on, off]) => (
+            <button key={key} onClick={() => c.setAdminFilter(key)} className={`px-3 py-1.5 rounded-lg transition ${c.adminFilter === key ? on : off}`}>{label}</button>
+          ))}
+        </div>
       </div>
 
       <div className="space-y-3">
