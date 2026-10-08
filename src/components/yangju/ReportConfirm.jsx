@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { aiScenarios } from "@/lib/yangjuData";
+import { resolveClassification } from "@/lib/yangjuData";
 
 export default function ReportConfirm({ c }) {
-  const sc = aiScenarios[c.pipeline.selectedScenarioKey];
+  const sc = resolveClassification(c.pipeline);
   const [desc, setDesc] = useState(c.pipeline.description || sc.draftContent);
 
   return (

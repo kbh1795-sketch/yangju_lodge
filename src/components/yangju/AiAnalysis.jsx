@@ -1,34 +1,88 @@
 import React, { useEffect, useState } from "react";
+import { base44 } from "@/api/base44Client";
 import { aiScenarios, suggestAlternatives, applyRiskUpgrade, getRiskLabel, getRiskBadgeClass } from "@/lib/yangjuData";
 
+async function ensureUrl(src) {
+  if (!src) return null;
+  if (/^https?:\/\//.test(src)) return src;
+  const blob = await (await fetch(src)).blob();
+  const file = new File([blob], "masked.png", { type: blob.type || "image/png" });
+  const { file_uri } = await base44.integrations.Core.UploadPrivateFile({ file });
+  const { signed_url } = await base44.integrations.Core.CreateFileSignedUrl({ file_uri, expires_in: 600 });
+  return signed_url;
+}
+
 export default function AiAnalysis({ c }) {
-  const sc = aiScenarios[c.pipeline.selectedScenarioKey];
-  const [step, setStep] = useState(0);
+  const p = c.pipeline;
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [ai, setAi] = useState(null);
   const [confirmed, setConfirmed] = useState(null);
   const [showAll, setShowAll] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    const t1 = setTimeout(() => setStep(1), 1000);
-    const t2 = setTimeout(() => setStep(2), 2000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [c.pipeline.selectedScenarioKey]);
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      setConfirmed(null);
+      try {
+        const url = await ensureUrl(p.maskedImage || p.originalImage);
+        if (!url) throw new Error("분석할 사진이 없습니다.");
+        const resp = await base44.functions.invoke("analyzeReportImage", {
+          imageUrl: url,
+          location: p.location,
+          description: p.description,
+          riskContext: p.riskContext,
+        });
+        if (cancelled) return;
+        const result = resp.data?.result || resp.data;
+        if (!result || result.error) throw new Error(result?.error || "AI 분석 실패");
+        setAi(result);
+        c.patchPipeline({ aiResult: result });
+      } catch (e) {
+        if (cancelled) return;
+        const msg = e?.message || String(e);
+        setError(msg);
+        const sc = aiScenarios[p.selectedScenarioKey];
+        setAi({
+          subCategory: sc.subCategory, category: sc.category, riskLevel: sc.riskLevel,
+          confidence: sc.confidence, reasoning: sc.aiReason, draftContent: sc.draftContent, _fallback: true,
+        });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line
+  }, [p.selectedScenarioKey, retryKey]);
 
-  if (step < 2) {
+  const chooseAlt = (key) => {
+    const sc = aiScenarios[key];
+    const data = {
+      subCategory: sc.subCategory, category: sc.category, riskLevel: sc.riskLevel,
+      confidence: sc.confidence, reasoning: sc.aiReason, draftContent: sc.draftContent, _manual: true,
+    };
+    setAi(data);
+    c.patchPipeline({ aiResult: data });
+    setConfirmed(null);
+  };
+
+  if (loading || !ai) {
     return (
       <div className="space-y-6">
         <div className="bg-blue-50 border border-blue-200 p-6 rounded-3xl text-center space-y-3">
           <div className="inline-block animate-spin text-blue-600 text-3xl mb-1"><i className="fa-solid fa-spinner"></i></div>
           <h3 className="font-bold text-blue-900 text-base">보호된 사진(maskedImage)으로 AI 분석 중...</h3>
-          <p className="text-xs text-blue-700">
-            {step === 0 ? "개인정보가 제거된 이미지로 안전 유형을 분류합니다." : "참고 사진과 유사도를 비교해 위험도를 산출 중입니다..."}
-          </p>
+          <p className="text-xs text-blue-700">개인정보가 제거된 이미지를 AI가 분류하고 위험도를 산정 중입니다.</p>
         </div>
       </div>
     );
   }
 
-  const up = applyRiskUpgrade(sc.riskLevel, c.pipeline.riskContext);
-  const alts = suggestAlternatives(c.pipeline.selectedScenarioKey);
+  const up = applyRiskUpgrade(ai.riskLevel, p.riskContext);
 
   return (
     <div className="space-y-6">
@@ -37,19 +91,27 @@ export default function AiAnalysis({ c }) {
           <i className="fa-solid fa-robot"></i>
         </div>
         <div>
-          <h3 className="font-bold text-yangju-900 text-sm">AI 추천 분석 완료 (maskedImage 검증됨)</h3>
+          <h3 className="font-bold text-yangju-900 text-sm">
+            AI 추천 분석 완료 {ai._fallback && <span className="text-amber-600 text-[11px]">(기본값 사용)</span>}{ai._manual && <span className="text-amber-600 text-[11px]">(수동 선택)</span>}
+          </h3>
           <p className="text-xs text-yangju-700">AI는 추천할 뿐, 최종 신고 내용은 시민이 확인하고 결정합니다.</p>
         </div>
       </div>
 
+      {error && (
+        <div className="bg-amber-50 border border-amber-200 p-3 rounded-2xl text-xs text-amber-800">
+          <i className="fa-solid fa-triangle-exclamation mr-1"></i> AI 분석 중 오류가 발생해 기본 분류를 표시합니다: {error}
+        </div>
+      )}
+
       <div className="bg-white border border-slate-200 p-5 rounded-3xl shadow-sm space-y-4">
         <div className="flex justify-between items-center border-b pb-3">
           <span className="text-xs font-bold text-slate-500">AI 분류 추천 항목</span>
-          <span className="text-sm font-bold text-yangju-700 bg-yangju-50 px-3 py-1 rounded-xl border border-yangju-200">{sc.subCategory}</span>
+          <span className="text-sm font-bold text-yangju-700 bg-yangju-50 px-3 py-1 rounded-xl border border-yangju-200">{ai.subCategory}</span>
         </div>
         <div className="flex justify-between items-center border-b pb-3">
           <span className="text-xs font-bold text-slate-500">분류 유형(대)</span>
-          <span className="text-xs font-bold text-slate-700">{sc.category}</span>
+          <span className="text-xs font-bold text-slate-700">{ai.category}</span>
         </div>
         <div className="flex justify-between items-center border-b pb-3">
           <span className="text-xs font-bold text-slate-500">AI 추천 위험도</span>
@@ -57,17 +119,17 @@ export default function AiAnalysis({ c }) {
         </div>
         <div className="flex justify-between items-center border-b pb-3">
           <span className="text-xs font-bold text-slate-500">분류 신뢰도</span>
-          <span className="text-xs font-bold text-slate-700"><i className="fa-solid fa-gauge-high text-yangju-600 mr-1"></i> {sc.confidence}%</span>
+          <span className="text-xs font-bold text-slate-700"><i className="fa-solid fa-gauge-high text-yangju-600 mr-1"></i> {ai.confidence}%</span>
         </div>
         {up.upgraded && (
           <div className="bg-red-50 border border-red-200 p-3 rounded-2xl text-xs text-red-800 space-y-1">
-            <div className="font-bold"><i className="fa-solid fa-triangle-exclamation mr-1"></i> 위험도 상향 적용 ({getRiskLabel(sc.riskLevel)} → {getRiskLabel(up.level)})</div>
+            <div className="font-bold"><i className="fa-solid fa-triangle-exclamation mr-1"></i> 위험도 상향 적용 ({getRiskLabel(ai.riskLevel)} → {getRiskLabel(up.level)})</div>
             <p>사유: {up.reasons.join(", ")}</p>
           </div>
         )}
         <div className="space-y-1.5">
           <span className="text-xs font-bold text-slate-500 block"><i className="fa-solid fa-magnifying-glass mr-1"></i> AI 판단 근거</span>
-          <p className="text-xs text-slate-700 bg-slate-50 p-3 rounded-2xl leading-relaxed border border-slate-200 whitespace-pre-line">{sc.aiReason}</p>
+          <p className="text-xs text-slate-700 bg-slate-50 p-3 rounded-2xl leading-relaxed border border-slate-200 whitespace-pre-line">{ai.reasoning}</p>
         </div>
       </div>
 
@@ -93,12 +155,15 @@ export default function AiAnalysis({ c }) {
             <i className="fa-solid fa-shuffle text-yangju-600"></i>
             <span>다른 항목으로 다시 분석</span>
           </div>
-          <p className="text-xs text-slate-600">AI가 추천한 다른 항목을 선택하거나 전체 목록에서 골라주세요.</p>
+          <button onClick={() => setRetryKey((k) => k + 1)} className="w-full bg-yangju-600 hover:bg-yangju-700 text-white font-semibold py-3 rounded-2xl text-sm transition flex items-center justify-center space-x-1.5">
+            <i className="fa-solid fa-wand-magic-sparkles"></i><span>AI 재분석 실행</span>
+          </button>
+          <p className="text-xs text-slate-600">또는 AI가 추천한 다른 항목을 선택하거나 전체 목록에서 골라주세요.</p>
           <div className="grid grid-cols-1 gap-2">
-            {alts.map((key) => {
+            {suggestAlternatives(p.selectedScenarioKey).map((key) => {
               const a = aiScenarios[key];
               return (
-                <button key={key} onClick={() => c.selectScenario(key)} className="flex items-center justify-between p-3 rounded-2xl border border-slate-200 hover:border-yangju-500 hover:bg-yangju-50 transition text-left">
+                <button key={key} onClick={() => chooseAlt(key)} className="flex items-center justify-between p-3 rounded-2xl border border-slate-200 hover:border-yangju-500 hover:bg-yangju-50 transition text-left">
                   <div>
                     <div className="text-sm font-bold text-slate-800">{a.subCategory}</div>
                     <div className="text-[11px] text-slate-500">{a.category}</div>
@@ -114,7 +179,7 @@ export default function AiAnalysis({ c }) {
           {showAll && (
             <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
               {Object.entries(aiScenarios).map(([key, v]) => (
-                <button key={key} onClick={() => c.selectScenario(key)} className={`p-2.5 text-xs rounded-xl border text-left ${c.pipeline.selectedScenarioKey === key ? "bg-yangju-700 text-white border-yangju-700 font-bold" : "bg-white text-slate-700 border-slate-200"}`}>
+                <button key={key} onClick={() => chooseAlt(key)} className={`p-2.5 text-xs rounded-xl border text-left ${p.selectedScenarioKey === key ? "bg-yangju-700 text-white border-yangju-700 font-bold" : "bg-white text-slate-700 border-slate-200"}`}>
                   {v.subCategory}
                 </button>
               ))}
@@ -128,7 +193,7 @@ export default function AiAnalysis({ c }) {
             <i className="fa-solid fa-circle-check text-yangju-600"></i>
             <span>분류를 확인했습니다.</span>
           </div>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-700 leading-relaxed font-mono">{sc.draftContent}</div>
+          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-700 leading-relaxed font-mono">{ai.draftContent}</div>
           <button onClick={() => c.navigateTo("C-05")} className="w-full bg-yangju-600 hover:bg-yangju-700 text-white font-semibold py-4 rounded-2xl shadow-md transition text-base flex items-center justify-center space-x-2">
             <span>신고 내용 확인 및 수정하기</span>
             <i className="fa-solid fa-arrow-right"></i>

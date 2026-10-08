@@ -82,6 +82,26 @@ export const applyRiskUpgrade = (baseLevel, ctx = {}) => {
   return { level: bumped, reasons, upgraded: bumped !== baseLevel };
 };
 
+// AI 분류 결과(pipeline.aiResult)가 있으면用它, 없으면 선택된 시나리오의 정적 데이터 사용
+export const resolveClassification = (pipeline) => {
+  const ai = pipeline?.aiResult;
+  if (ai && ai.subCategory) {
+    const risk = ai.riskLevel || 'MEDIUM';
+    return {
+      category: ai.category,
+      subCategory: ai.subCategory,
+      riskLevel: risk,
+      riskLabel: getRiskLabel(risk),
+      riskBadgeColor: getRiskBadgeClass(risk),
+      draftContent: ai.draftContent || '',
+      aiReason: ai.reasoning || '',
+      confidence: ai.confidence ?? null,
+      recommendedDepartment: (departmentMap[ai.category] || { department: 'Demo 종합민원팀' }).department,
+    };
+  }
+  return aiScenarios[pipeline?.selectedScenarioKey] || aiScenarios.road_damage;
+};
+
 const mk = (o) => ({ reassignmentHistory: [], reassignmentCount: 0, deadlineExceeded: false, managerAttention: false, ...o });
 
 export const initialReportsData = [

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   initialReportsData, initialPipeline, aiScenarios, fraudTestScenarios, departmentMap,
-  analyzeFraudMessage, screenMeta, needsAttention,
+  analyzeFraudMessage, screenMeta, needsAttention, resolveClassification,
 } from "@/lib/yangjuData";
 import SelectMode from "@/components/yangju/SelectMode";
 import CitizenHome from "@/components/yangju/CitizenHome";
@@ -101,7 +101,7 @@ export default function Home() {
       navigateTo("C-04");
     },
     submitReport: (desc) => {
-      const sc = aiScenarios[pipeline.selectedScenarioKey];
+      const sc = resolveClassification(pipeline);
       const rec = departmentMap[sc.category] || { department: "Demo 종합민원팀" };
       const id = "YJ-DEMO-" + String(reports.length + 1).padStart(3, "0");
       const rep = {
