@@ -15,6 +15,7 @@ import FraudResult from "@/components/yangju/FraudResult";
 import AdminList from "@/components/yangju/AdminList";
 import AdminDetail from "@/components/yangju/AdminDetail";
 import AdminAssign from "@/components/yangju/AdminAssign";
+import MockSms from "@/components/yangju/MockSms";
 import AppHeader from "@/components/yangju/AppHeader";
 import BottomNav from "@/components/yangju/BottomNav";
 import AlertModal from "@/components/yangju/AlertModal";
@@ -22,7 +23,7 @@ import AlertModal from "@/components/yangju/AlertModal";
 const SCREENS = {
   SELECT_MODE: SelectMode, "C-01": CitizenHome, "C-02": PhotoSelect, "C-03": PrivacyMask,
   "C-04": AiAnalysis, "C-05": ReportConfirm, "C-06": MyReports, "C-07": FraudInput,
-  "C-08": FraudResult, "A-01": AdminList, "A-02": AdminDetail, "A-03": AdminAssign,
+  "C-08": FraudResult, "C-09": MockSms, "A-01": AdminList, "A-02": AdminDetail, "A-03": AdminAssign,
 };
 
 const nowStr = () => new Date().toISOString().slice(0, 16).replace("T", " ");
@@ -69,7 +70,7 @@ export default function Home() {
 
   const resetPipelineFor = (key) => {
     const sc = aiScenarios[key];
-    return { selectedScenarioKey: key, originalImage: sc.defaultImageUrl, hasDetectedFaces: sc.hasFaces, autoMaskedImage: null, manualMasks: [], maskedImage: null, pipelineStatus: "IDLE" };
+    return { selectedScenarioKey: key, originalImage: sc.defaultImageUrl, hasDetectedFaces: sc.hasFaces, autoMaskedImage: null, manualMasks: [], maskedImage: null, pipelineStatus: "IDLE", riskContext: { childZone: false, night: false, rain: false, elderly: false } };
   };
 
   const c = {
@@ -157,7 +158,7 @@ export default function Home() {
       <div className="flex-1 flex flex-col max-w-md md:max-w-4xl mx-auto w-full bg-white shadow-xl min-h-screen relative overflow-hidden">
         <AppHeader title={title} subtitle={subtitle} showBack={!["SELECT_MODE", "C-01", "A-01"].includes(view)} onBack={goBack} onReset={resetDemo} />
         <main className="flex-1 overflow-y-auto p-5 pb-24">
-          <Screen key={view} c={c} />
+          <Screen key={view === "C-04" ? `${view}-${c.pipeline.selectedScenarioKey}` : view} c={c} />
         </main>
         <BottomNav mode={view === "SELECT_MODE" ? "none" : userMode} navigateTo={navigateTo} switchMode={switchMode} />
       </div>

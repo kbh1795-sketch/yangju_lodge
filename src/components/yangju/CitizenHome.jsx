@@ -24,6 +24,16 @@ export default function CitizenHome({ c }) {
           <p className="text-slate-500 text-xs mt-1">의심 문자·메시지 진단</p>
         </div>
       </div>
+      <div onClick={() => c.navigateTo("C-09")} className="bg-slate-900 text-white border border-slate-800 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-slate-800 transition">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-slate-700 text-amber-400 rounded-full flex items-center justify-center"><i className="fa-solid fa-mobile-screen-button"></i></div>
+          <div>
+            <h4 className="font-semibold text-white text-sm">수신 문자 모의 알림</h4>
+            <p className="text-xs text-slate-400">문자 알림 → 진단 연결 시연</p>
+          </div>
+        </div>
+        <i className="fa-solid fa-chevron-right text-slate-500"></i>
+      </div>
       <div onClick={() => c.navigateTo("C-06")} className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-slate-100 transition">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-yangju-100 text-yangju-700 rounded-full flex items-center justify-center font-bold">{c.reports.length}</div>

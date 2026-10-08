@@ -1,15 +1,18 @@
 import React from "react";
+import { aiScenarios, scenarioGroups } from "@/lib/yangjuData";
 
-const OPTIONS = [
-  ["road_damage", "1. 도로 파손 (얼굴 O)"],
-  ["illegal_parking", "2. 불법 주정차 (얼굴 X)"],
-  ["facility_damage", "3. 시설물 파손 (얼굴 O)"],
-  ["flooding", "4. 침수·배수 (얼굴 X)"],
+const RISK_CTX = [
+  ["childZone", "어린이보호구역 인근"],
+  ["night", "야간 시간대"],
+  ["rain", "비 예보/강수"],
+  ["elderly", "노인 보행 많은 구역"],
 ];
 
 export default function PhotoSelect({ c }) {
   const p = c.pipeline;
   const hasImage = p.originalImage !== null;
+  const groups = scenarioGroups();
+
   return (
     <div className="space-y-6">
       <div className="bg-yangju-50 border border-yangju-200 p-4 rounded-2xl">
@@ -18,21 +21,26 @@ export default function PhotoSelect({ c }) {
       </div>
 
       <div className="space-y-2">
-        <label className="block text-xs font-bold text-slate-600">테스트 시나리오 선택 (얼굴 검출 유무 분기 테스트)</label>
-        <div className="grid grid-cols-2 gap-2">
-          {OPTIONS.map(([key, label]) => (
-            <button key={key} onClick={() => c.selectScenario(key)} className={`p-3 text-xs rounded-xl border ${p.selectedScenarioKey === key ? "bg-yangju-700 text-white border-yangju-700 font-bold" : "bg-white text-slate-700 border-slate-200"} transition`}>
-              {label}
-            </button>
+        <label className="block text-xs font-bold text-slate-600">테스트 시나리오 선택 (6개 유형 · 세부 18개 항목)</label>
+        <div className="space-y-2.5">
+          {Object.entries(groups).map(([group, items]) => (
+            <div key={group} className="space-y-1.5">
+              <div className="text-[11px] font-bold text-slate-500 px-1">{group}</div>
+              <div className="grid grid-cols-2 gap-2">
+                {items.map(([key, v]) => (
+                  <button key={key} onClick={() => c.selectScenario(key)} className={`p-2.5 text-xs rounded-xl border ${p.selectedScenarioKey === key ? "bg-yangju-700 text-white border-yangju-700 font-bold" : "bg-white text-slate-700 border-slate-200"} transition text-left`}>
+                    {v.subCategory}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
       <div className="space-y-2">
-        <label className="block text-xs font-bold text-slate-700">로컬 이미지 파일 직접 선택 (JPG, PNG, WEBP)</label>
-        <div className="flex items-center space-x-2">
-          <input type="file" accept="image/jpeg, image/png, image/webp" onChange={c.handleFileSelect} className="block w-full text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-yangju-50 file:text-yangju-700 hover:file:bg-yangju-100 border border-slate-200 rounded-2xl p-2 cursor-pointer bg-slate-50" />
-        </div>
+        <label className="block text-xs font-bold text-slate-600">로컬 이미지 파일 직접 선택 (JPG, PNG, WEBP)</label>
+        <input type="file" accept="image/jpeg, image/png, image/webp" onChange={c.handleFileSelect} className="block w-full text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-yangju-50 file:text-yangju-700 hover:file:bg-yangju-100 border border-slate-200 rounded-2xl p-2 cursor-pointer bg-slate-50" />
       </div>
 
       <div className="space-y-2">
@@ -59,7 +67,7 @@ export default function PhotoSelect({ c }) {
         </div>
       </div>
 
-      <div className="space-y-4 bg-slate-50 p-4 rounded-3xl border border-slate-200">
+      <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 space-y-4">
         <div className="space-y-1">
           <label className="block text-xs font-bold text-slate-700"><i className="fa-solid fa-location-dot text-yangju-600 mr-1"></i> 위치 입력</label>
           <input type="text" value={p.location} onChange={(e) => c.patchPipeline({ location: e.target.value })} className="w-full border border-slate-300 rounded-xl p-3 text-sm bg-white focus:outline-none focus:border-yangju-600" />
@@ -67,6 +75,18 @@ export default function PhotoSelect({ c }) {
         <div className="space-y-1">
           <label className="block text-xs font-bold text-slate-700"><i className="fa-solid fa-pen text-yangju-600 mr-1"></i> 간단한 설명 (선택사항)</label>
           <input type="text" value={p.description} onChange={(e) => c.patchPipeline({ description: e.target.value })} placeholder="예: 통행에 지장이 있어 조치가 필요합니다." className="w-full border border-slate-300 rounded-xl p-3 text-sm bg-white focus:outline-none focus:border-yangju-600" />
+        </div>
+        <div className="space-y-2">
+          <label className="block text-xs font-bold text-slate-700"><i className="fa-solid fa-triangle-exclamation text-amber-600 mr-1"></i> 위험도 상향 조건 (해당 시 선택)</label>
+          <div className="grid grid-cols-2 gap-2">
+            {RISK_CTX.map(([key, label]) => (
+              <label key={key} className={`flex items-center space-x-2 p-2.5 rounded-xl border text-xs cursor-pointer ${p.riskContext[key] ? "bg-red-50 border-red-300 text-red-800 font-semibold" : "bg-white border-slate-200 text-slate-600"}`}>
+                <input type="checkbox" checked={p.riskContext[key]} onChange={() => c.patchPipeline((prev) => ({ riskContext: { ...prev.riskContext, [key]: !prev.riskContext[key] } }))} className="accent-red-600" />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-500">선택 조건이 있으면 AI 추천 위험도가 한 단계 상향 조정됩니다.</p>
         </div>
       </div>
 
