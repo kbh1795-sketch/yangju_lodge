@@ -1,48 +1,95 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 export default function PrivacyMask({ c }) {
   const p = c.pipeline;
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const [baseSrc, setBaseSrc] = useState(null);
+  const drawing = useRef(false);
+  const lastPos = useRef(null);
 
+  // 원본을 데이터 URL로 변환해 캔버스 오염(taint) 방지 → 실제 마스킹 저장 가능
   useEffect(() => {
+    const src = p.autoMaskedImage || p.originalImage;
+    if (!src) { setBaseSrc(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(src);
+        const blob = await res.blob();
+        const reader = new FileReader();
+        reader.onload = () => { if (!cancelled) setBaseSrc(reader.result); };
+        reader.onerror = () => { if (!cancelled) setBaseSrc(src); };
+        reader.readAsDataURL(blob);
+      } catch (e) {
+        if (!cancelled) setBaseSrc(src);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [p.autoMaskedImage, p.originalImage]);
+
+  // 캔버스에 이미지 + 자동 블러 + 직접 마스킹 그리기
+  useEffect(() => {
+    if (!baseSrc) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const img = new Image();
-    img.crossOrigin = "anonymous";
     img.onload = () => {
       canvas.width = img.width || 600;
       canvas.height = img.height || 400;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       if (p.hasDetectedFaces) {
-        ctx.fillStyle = "rgba(15, 23, 42, 0.8)";
-        ctx.fillRect(40, 40, 140, 45);
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.fillRect(40, 40, 150, 50);
         ctx.fillStyle = "#38bdf8";
-        ctx.font = "bold 12px Inter, sans-serif";
-        ctx.fillText("🔒 [자동 얼굴 블러]", 50, 68);
+        ctx.font = "bold 13px Inter, sans-serif";
+        ctx.fillText("🔒 [자동 얼굴 블러]", 50, 70);
       }
       p.manualMasks.forEach((r) => {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+        ctx.fillStyle = "rgba(0, 0, 0, 0.88)";
         ctx.fillRect(r.x, r.y, r.w, r.h);
         ctx.strokeStyle = "#f59e0b";
         ctx.lineWidth = 2;
         ctx.strokeRect(r.x, r.y, r.w, r.h);
       });
-      try { c.patchPipeline({ maskedImage: canvas.toDataURL("image/png") }); } catch (e) { c.patchPipeline({ maskedImage: p.originalImage }); }
+      try { c.patchPipeline({ maskedImage: canvas.toDataURL("image/png") }); } catch (e) { /* ignore */ }
     };
-    img.src = p.autoMaskedImage || p.originalImage;
+    img.src = baseSrc;
     // eslint-disable-next-line
-  }, [p.autoMaskedImage, p.originalImage, p.manualMasks, p.hasDetectedFaces]);
+  }, [baseSrc, p.manualMasks, p.hasDetectedFaces]);
 
-  const addMask = (clientX, clientY) => {
+  const toCanvasPos = (clientX, clientY) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const x = (clientX - rect.left) * (canvas.width / rect.width);
-    const y = (clientY - rect.top) * (canvas.height / rect.height);
-    c.patchPipeline((prev) => ({ manualMasks: [...prev.manualMasks, { x: x - 35, y: y - 25, w: 70, h: 50 }], pipelineStatus: "MANUAL_EDITED" }));
+    return {
+      x: (clientX - rect.left) * (canvas.width / rect.width),
+      y: (clientY - rect.top) * (canvas.height / rect.height),
+    };
   };
+
+  const addMaskAt = (clientX, clientY) => {
+    const { x, y } = toCanvasPos(clientX, clientY);
+    c.patchPipeline((prev) => ({
+      manualMasks: [...prev.manualMasks, { x: x - 30, y: y - 22, w: 60, h: 44 }],
+      pipelineStatus: "MANUAL_EDITED",
+    }));
+  };
+
+  const onDown = (clientX, clientY) => {
+    drawing.current = true;
+    lastPos.current = { clientX, clientY };
+    addMaskAt(clientX, clientY);
+  };
+  const onMove = (clientX, clientY) => {
+    if (!drawing.current) return;
+    const last = lastPos.current;
+    if (last && Math.hypot(clientX - last.clientX, clientY - last.clientY) < 14) return;
+    lastPos.current = { clientX, clientY };
+    addMaskAt(clientX, clientY);
+  };
+  const onUp = () => { drawing.current = false; lastPos.current = null; };
 
   const focusCanvas = () => {
     const el = containerRef.current;
@@ -86,7 +133,7 @@ export default function PrivacyMask({ c }) {
             <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded">불변 보존</span>
           </div>
           <div className="h-44 rounded-xl overflow-hidden bg-slate-200 flex items-center justify-center">
-            <img src={p.originalImage} alt="Original" className="w-full h-full object-cover" />
+            {baseSrc ? <img src={baseSrc} alt="Original" className="w-full h-full object-cover" /> : <div className="text-slate-400 text-xs">이미지 로드 중...</div>}
           </div>
         </div>
         <div className="border-2 border-yangju-500 rounded-2xl overflow-hidden bg-slate-50 relative p-2">
@@ -95,7 +142,17 @@ export default function PrivacyMask({ c }) {
             <span className="text-[10px] bg-yangju-600 text-white px-2 py-0.5 rounded">AI 전송용</span>
           </div>
           <div ref={containerRef} className="h-44 rounded-xl overflow-hidden bg-slate-900 relative flex items-center justify-center cursor-crosshair">
-            <canvas ref={canvasRef} className="w-full h-full object-cover" onMouseDown={(e) => addMask(e.clientX, e.clientY)} onTouchStart={(e) => { if (e.touches[0]) addMask(e.touches[0].clientX, e.touches[0].clientY); }}></canvas>
+            <canvas
+              ref={canvasRef}
+              className="w-full h-full object-cover"
+              onMouseDown={(e) => onDown(e.clientX, e.clientY)}
+              onMouseMove={(e) => onMove(e.clientX, e.clientY)}
+              onMouseUp={onUp}
+              onMouseLeave={onUp}
+              onTouchStart={(e) => { if (e.touches[0]) { onDown(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); } }}
+              onTouchMove={(e) => { if (e.touches[0]) { onMove(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); } }}
+              onTouchEnd={onUp}
+            />
             <div className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded pointer-events-none">
               <i className="fa-solid fa-paintbrush mr-1 text-amber-400"></i> 마우스/손가락으로 드래그하여 직접 가리기
             </div>
